@@ -6829,7 +6829,7 @@ abstract class CommonITILObject extends CommonDBTM
         $canadd_fup = $fup->can(-1, CREATE, $tmp) && !in_array($this->fields["status"], $solved_closed_statuses, true) || isset($_GET['_openfollowup']);
         $canadd_task = $task->can(-1, CREATE, $tmp) && !in_array($this->fields["status"], $solved_closed_statuses, true);
         $canadd_document = $canadd_fup || ($this->canAddItem('Document') && !in_array($this->fields["status"], $solved_closed_statuses, true));
-        $canadd_solution = $obj_type::canUpdate() && $this->canSolve() && !in_array($this->fields["status"], $solved_statuses, true);
+        $canadd_solution = $obj_type::canUpdate() && $this->canSolve() && $this->canAssignToMe() && !in_array($this->fields["status"], $solved_statuses, true);
 
         $validation = $this->getValidationClassInstance();
         $canadd_validation = $validation !== null
