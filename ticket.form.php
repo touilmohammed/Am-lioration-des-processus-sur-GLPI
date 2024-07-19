@@ -544,7 +544,7 @@ class PluginTransferticketentityTransfer extends CommonDBTM
                 header('location:' . $theServer);
             }
             else { 
-                // Change the entity ticket and set its status to processing (assigned)
+                // Change the entity ticket and set its status to pending
                 $ticket = new Ticket();
 
                 $ticket_update = [
@@ -553,10 +553,10 @@ class PluginTransferticketentityTransfer extends CommonDBTM
                 ];
 
                 if ($theGroup) {
-                    $ticket_status = ['status' => 2];
+                    $ticket_status = ['status' => 4];
                     $ticket_update = array_merge($ticket_update, $ticket_status);
                 } else {
-                    $ticket_status = ['status' => 1];
+                    $ticket_status = ['status' => 4];
                     $ticket_update = array_merge($ticket_update, $ticket_status);
                 }
 
