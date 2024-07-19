@@ -29,114 +29,108 @@
  * ---------------------------------------------------------------------
  */
 
-include ('../../../inc/includes.php');
+ include ('../../../inc/includes.php');
 
-// Check if plugin is activated...
-if (!Plugin::isPluginActive('formcreator')) {
-   http_response_code(404);
-   die();
-}
-
-if (!isset($_POST['add']) || !isset($_POST['plugin_formcreator_forms_id'])) {
-   http_response_code(500);
-   die();
-}
-
-$form = PluginFormcreatorCommon::getForm();
-if (!$form->getFromDB($_POST['plugin_formcreator_forms_id'])) {
-   http_response_code(500);
-   die();
-}
-
-// If user is not authenticated, create temporary user
-if (!isset($_SESSION['glpiname'])) {
-   $_SESSION['glpiname'] = 'formcreator_temp_user';
-}
-
-// Save form
-$backup_debug = $_SESSION['glpi_use_mode'];
-$_SESSION['glpi_use_mode'] = Session::NORMAL_MODE;
-$formAnswer = PluginFormcreatorCommon::getFormAnswer();
-if ($formAnswer->add($_POST) === false) {
-   http_response_code(400);
-   if ($_SESSION['glpiname'] == 'formcreator_temp_user') {
-      // Messages are for authenticated users. This is a workaround
-      ob_start();
-      Html::displayMessageAfterRedirect(filter_var(($_GET['display_container'] ?? true), FILTER_VALIDATE_BOOLEAN));
-      $messages = ob_get_clean();
-      echo json_encode([
-         'message' => $messages
-      ]);
-   }
-   $_SESSION['glpi_use_mode'] = $backup_debug;
-   die();
-}
-$form->increaseUsageCount();
-$_SESSION['glpi_use_mode'] = $backup_debug;
-
-if ($_SESSION['glpiname'] == 'formcreator_temp_user') {
-   // Form was saved by an annymous user
-   unset($_SESSION['glpiname']);
-   // don't show notifications
-   unset($_SESSION['MESSAGE_AFTER_REDIRECT']);
-   echo json_encode(
-      [
-         'redirect' => 'formdisplay.php?answer_saved',
-      ], JSON_FORCE_OBJECT
-   );
-   die();
-}
-
-// redirect to created item
-if ($_SESSION['glpibackcreated']) {
-   if (strpos($_SERVER['HTTP_REFERER'], 'form.form.php') !== false) {
-      echo json_encode(
-         [
-            'redirect' => (new PluginFormcreatorForm())->getFormURLWithID($formAnswer->fields['plugin_formcreator_forms_id']),
-         ], JSON_FORCE_OBJECT
-      );
-      die();
-   }
-   // User was not testing the form from preview
-   reset($formAnswer->targetList);
-   $target = current($formAnswer->targetList);
-   if (count($formAnswer->targetList) == 1 && $target::canView()) {
-      echo json_encode(
-         [
-            'redirect' => $target->getFormURLWithID($target->getID()),
-         ], JSON_FORCE_OBJECT
-      );
-      die();
-   }
-   echo json_encode(
-      [
+ // Check if plugin is activated...
+ if (!Plugin::isPluginActive('formcreator')) {
+     http_response_code(404);
+     die();
+ }
+ 
+ if (!isset($_POST['add']) || !isset($_POST['plugin_formcreator_forms_id'])) {
+     http_response_code(500);
+     die();
+ }
+ 
+ $form = PluginFormcreatorCommon::getForm();
+ if (!$form->getFromDB($_POST['plugin_formcreator_forms_id'])) {
+     http_response_code(500);
+     die();
+ }
+ 
+ // If user is not authenticated, create temporary user
+ if (!isset($_SESSION['glpiname'])) {
+     $_SESSION['glpiname'] = 'formcreator_temp_user';
+ }
+ 
+ $backup_debug = $_SESSION['glpi_use_mode'];
+ $_SESSION['glpi_use_mode'] = Session::NORMAL_MODE;
+ $formAnswer = PluginFormcreatorCommon::getFormAnswer();
+ if ($formAnswer->add($_POST) === false) {
+     http_response_code(400);
+     if ($_SESSION['glpiname'] == 'formcreator_temp_user') {
+         ob_start();
+         Html::displayMessageAfterRedirect(filter_var(($_GET['display_container'] ?? true), FILTER_VALIDATE_BOOLEAN));
+         $messages = ob_get_clean();
+         echo json_encode(['message' => $messages]);
+     }
+     $_SESSION['glpi_use_mode'] = $backup_debug;
+     die();
+ }
+ 
+ // Check if a ticket was created
+ global $DB;
+ $query = "SELECT `tickets_id` FROM `glpi_items_tickets` WHERE `itemtype` = 'PluginFormcreatorFormAnswer' AND `items_id` = " . $formAnswer->getID();
+ $result = $DB->query($query);
+ if ($row = $DB->fetchAssoc($result)) {
+     $ticketId = $row['tickets_id'];
+     echo json_encode([
+         'redirect' => "/glpi/front/ticket.form.php?id=" . $ticketId
+     ]);
+     $_SESSION['glpi_use_mode'] = $backup_debug;
+     die();
+ }
+ 
+ $form->increaseUsageCount();
+ $_SESSION['glpi_use_mode'] = $backup_debug;
+ 
+ if ($_SESSION['glpiname'] == 'formcreator_temp_user') {
+     unset($_SESSION['glpiname']);
+     unset($_SESSION['MESSAGE_AFTER_REDIRECT']);
+     echo json_encode(['redirect' => 'formdisplay.php?answer_saved'], JSON_FORCE_OBJECT);
+     die();
+ }
+ 
+ // Redirect to created item
+ if ($_SESSION['glpibackcreated']) {
+     if (strpos($_SERVER['HTTP_REFERER'], 'form.form.php') !== false) {
+         echo json_encode([
+             'redirect' => (new PluginFormcreatorForm())->getFormURLWithID($formAnswer->fields['plugin_formcreator_forms_id']),
+         ], JSON_FORCE_OBJECT);
+         die();
+     }
+     reset($formAnswer->targetList);
+     $target = current($formAnswer->targetList);
+     if (count($formAnswer->targetList) == 1 && $target::canView()) {
+         echo json_encode([
+             'redirect' => $target->getFormURLWithID($target->getID()),
+         ], JSON_FORCE_OBJECT);
+         die();
+     }
+     echo json_encode([
          'redirect' => $formAnswer->getFormURLWithID($formAnswer->getID()),
-      ], JSON_FORCE_OBJECT
-   );
-   die();
-}
-
-if (plugin_formcreator_replaceHelpdesk()) {
-   if (Ticket::canView()) {
-      $redirect = PluginFormcreatorIssue::getSearchURL();
-   } else {
-      $redirect = 'wizard.php';
-   }
-
-   // Form was saved from the service catalog
-   echo json_encode(
-      [
+     ], JSON_FORCE_OBJECT);
+     die();
+ }
+ 
+ if (plugin_formcreator_replaceHelpdesk()) {
+     if (Ticket::canView()) {
+         $redirect = PluginFormcreatorIssue::getSearchURL();
+     } else {
+         $redirect = 'wizard.php';
+     }
+     echo json_encode([
          'redirect' => $redirect,
-      ], JSON_FORCE_OBJECT
-   );
-   die();
-}
-if (strpos($_SERVER['HTTP_REFERER'], 'formdisplay.php') !== false) {
-   // Form was saved from helpdesk (assistance > forms)
-   echo json_encode(
-      [
+     ], JSON_FORCE_OBJECT);
+     die();
+ }
+ 
+ if (strpos($_SERVER['HTTP_REFERER'], 'formdisplay.php') !== false) {
+     echo json_encode([
          'redirect' => 'formlist.php',
-      ], JSON_FORCE_OBJECT
-   );
-   die();
-}
+     ], JSON_FORCE_OBJECT);
+     die();
+ }
+ 
+ // Finally, restore the session mode before ending the script
+ $_SESSION['glpi_use_mode'] = $backup_debug;
