@@ -49,7 +49,7 @@ class PluginTransferticketentityTicket extends Ticket
 
         if (in_array($_SESSION['glpiactiveprofile']['id'], $checkProfiles)) {
             if ($item->getType() == 'Ticket') {
-                return __("Transfer Ticket Entity", "transferticketentity");
+                return __("Réclamation fondée", "transferticketentity");
             }
             return '';
         }
