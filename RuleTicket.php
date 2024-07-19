@@ -203,6 +203,11 @@ class RuleTicket extends Rule
                     case "assign":
                         $output[$action->fields["field"]] = $action->fields["value"];
 
+                     // Gestion spécifique de l'assignation des entités
+                        if ($action->fields["field"] == 'entities_id') {
+                            $output['entities_id'] = $action->fields["value"];
+                        }
+
                      // Special case of status
                         if ($action->fields["field"] === 'status') {
                            // Add a flag to remember that status was forced by rule
@@ -540,11 +545,17 @@ class RuleTicket extends Rule
 
     public function getCriterias()
     {
+        global $DB;
 
         static $criterias = [];
 
         if (count($criterias)) {
             return $criterias;
+        }
+
+            // Exemple d'ajout de log
+        if ($DB->error()) {
+            Toolbox::logInFile("glpi-debug", "Erreur lors de la récupération des critères: " . $DB->error() . "\n");
         }
 
         $criterias['name']['table']                           = 'glpi_tickets';
@@ -783,6 +794,22 @@ class RuleTicket extends Rule
         $criterias['global_validation']['name']               = _n('Validation', 'Validations', 1);
         $criterias['global_validation']['type']               = 'dropdown_validation_status';
 
+        $criterias['solutiontypes_id'] = [
+            'table'     => 'glpi_solutiontypes',
+            'field'     => 'name',
+            'name'      => __('Solution type'),
+            'type'      => 'dropdown',
+            'linkfield' => 'solution_type_link'  // Ceci est un champ virtuel pour la gestion dans le code
+        ];
+    
+        // Ajouter cette partie pour gérer la récupération du type de solution
+        $criterias['solution_type_link'] = [
+            'name'            => __('Solution type link'),  // Champ virtuel pour la liaison
+            'computation'     => function($ticket_id) {
+                return $this->getSolutionTypeByTicket($ticket_id);
+            }
+        ];
+
         $criterias['_date_creation_calendars_id'] = [
             'name'            => __("Creation date is a working hour in calendar"),
             'table'           => Calendar::getTable(),
@@ -791,6 +818,21 @@ class RuleTicket extends Rule
             'type'            => 'dropdown',
         ];
 
+        // Ajouter dynamiquement les champs de type liste déroulante
+        $field_obj = new PluginFieldsField();
+        $fields = $field_obj->find(['type' => 'dropdown']);
+
+        foreach ($fields as $field) {
+            $criterias['field_' . $field['id']] = [
+                'table'     => 'glpi_plugin_fields_' . $field['name'],
+                'field'     => 'name',
+                'linkfield' => $field['name'],
+                'name'      => $field['label'],
+                'type'      => 'dropdown',
+                'values'    => Dropdown::getDropdownName('glpi_plugin_fields_' . $field['name'], $field['name']) // Récupérer les valeurs de la liste déroulante
+            ];
+        }
+    
         return $criterias;
     }
 
@@ -1032,9 +1074,38 @@ class RuleTicket extends Rule
         $actions['assign_contract']['table']                 = 'glpi_contracts';
         $actions['assign_contract']['force_actions']         = ['assign','regex_result'];
 
+        $actions['entities_id'] = [
+            'name' => __('Entity'), // Nom affiché dans l'interface
+            'type' => 'dropdown', // Type d'action, contrôle dropdown
+            'table' => 'glpi_entities', // Table contenant les données
+            'field' => 'name', // Champ à afficher dans le dropdown
+            'force_actions' => ['assign'], // Actions possibles avec cette règle
+        ];
+
         return $actions;
     }
 
+    // Fonction pour récupérer le type de solution par l'ID de ticket
+    function getSolutionTypeByTicket($ticket_id) {
+        global $DB; // Assurez-vous que $DB est bien un objet mysqli.
+    
+        $query = "SELECT solutiontypes_id
+                  FROM glpi_itilsolutions
+                  WHERE items_id IN (
+                      SELECT id
+                      FROM glpi_items_tickets
+                      WHERE tickets_id = '$ticket_id'
+                  )";
+    
+        if ($result = $DB->query($query)) {
+            if ($result->num_rows > 0) {
+                $row = $result->fetch_assoc();
+                return $row['solutiontypes_id'];
+            }
+            $result->free();
+        }
+        return null;
+    }    
 
     /**
      * @since 0.85
