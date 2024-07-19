@@ -232,28 +232,54 @@ class PluginFieldsContainerDisplayCondition extends CommonDBChild
 
     public static function showItemtypeFieldForm($itemtype)
     {
-
         $rand = mt_rand();
         $out = "";
-        $out .= Dropdown::showFromArray("search_option", self::removeBlackListedOption(Search::getOptions($itemtype), $itemtype), ["display_emptychoice" => true, "display" => false, 'rand' => $rand]);
-
+    
+        // Récupération des options de recherche après filtrage
+        $options = self::removeBlackListedOption(Search::getOptions($itemtype), $itemtype);
+    
+        // Vérification et log de la présence de 'category_itil'
+        if (array_key_exists('7', $options)) {
+            error_log('category_itil est disponible pour ' . $itemtype . ' avec l\'ID 7');
+        } else {
+            error_log('category_itil non trouvée dans les options de recherche pour ' . $itemtype);
+            if ($itemtype == "Ticket") {  // Supposons que `category_itil` est seulement pour les Tickets
+                $options['7'] = __('Category ITIL', 'fields');
+            }
+        }
+    
+        // Création du dropdown des options de recherche
+        $out .= Dropdown::showFromArray("search_option", $options, [
+            "display_emptychoice" => true,
+            "display" => false,
+            'rand' => $rand
+        ]);
+    
+        // AJAX pour mettre à jour les conditions d'affichage basées sur l'option sélectionnée
         $out .= Ajax::updateItemOnSelectEvent(
             "dropdown_search_option" . $rand,
             "results_condition",
             Plugin::getWebDir('fields') . '/ajax/container_display_condition.php',
             [
                 'search_option_id'  => '__VALUE__',
-                'itemtype'  => $itemtype,
-                'action'     => 'get_condition_switch_so'
+                'itemtype'          => $itemtype,
+                'action'            => 'get_condition_switch_so'
             ]
         );
-
+    
         echo $out;
-    }
-
+    }     
 
     public static function showSearchOptionCondition($searchoption_id, $itemtype, ?string $condition = null, ?string $value = null)
     {
+        $options = Search::getOptions($itemtype);
+        if (!array_key_exists('7', $options)) {  // Utiliser l'ID correct pour 'category_itil'
+            error_log('L\'option de recherche pour la catégorie ITIL (ID 7) n\'est pas définie');
+        } else {
+            $categoryItilOption = $options[7]; // Accès à l'option de recherche 'category_itil'
+            error_log('L\'option de recherche pour la catégorie ITIL est présente: ' . print_r($categoryItilOption, true));
+        }
+        
         $so = Search::getOptions($itemtype)[$searchoption_id];
 
         $itemtypetable = $itemtype::getTable();
@@ -354,19 +380,18 @@ class PluginFieldsContainerDisplayCondition extends CommonDBChild
 
     public static function removeBlackListedOption($array, $itemtype_class)
     {
-
         $itemtype_object = new $itemtype_class();
         $allowed_so = [];
-
-        //remove "Common"
+    
+        // Remove "Common"
         unset($array['common']);
-
+    
         $allowed_table = [getTableForItemType($itemtype_class), User::getTable(), Group::getTable()];
         if ($itemtype_object->maybeLocated()) {
             array_push($allowed_table, Location::getTable());
         }
-
-        //use relation.constant.php to allow some tables (exclude Location which is managed using `CommonDBTM::maybeLocated()`)
+    
+        // Use relation.constant.php to allow some tables
         foreach (getDbRelations() as $relation) {
             foreach ($relation as $main_table => $foreignKey) {
                 if (
@@ -378,28 +403,28 @@ class PluginFieldsContainerDisplayCondition extends CommonDBChild
                 }
             }
         }
-
+    
         if ($itemtype_object->isEntityAssign()) {
             $allowed_table[] = getTableForItemType(Entity::getType());
         }
-
-        //allow specific datatype
-        $allowed_datatype = ["email", "weblink", "specific", "itemlink", "string", "text","number", "dropdown", "decimal", "integer", "bool"];
+    
+        // Allow specific datatype
+        $allowed_datatype = ["email", "weblink", "specific", "itemlink", "string", "text", "number", "dropdown", "decimal", "integer", "bool"];
         foreach ($array as $subKey => $subArray) {
             if (
                 isset($subArray["table"]) && in_array($subArray["table"], $allowed_table)
                 && (isset($subArray["datatype"]) && in_array($subArray["datatype"], $allowed_datatype))
-                && !isset($subArray["nosearch"]) //Exclude SO with no search
-                && !isset($subArray["usehaving"]) //Exclude count SO ex: Ticket -> Number of sons tickets
-                && !isset($subArray["forcegroupby"]) //Exclude 1-n relation ex: Ticket_User
-                && !isset($subArray["computation"]) //Exclude SO with computation Ex : Ticket -> Time to own exceeded
+                && !isset($subArray["nosearch"]) // Exclude SO with no search
+                && !isset($subArray["usehaving"]) // Exclude count SO ex: Ticket -> Number of sons tickets
+                && !isset($subArray["forcegroupby"]) // Exclude 1-n relation ex: Ticket_User
+                && !isset($subArray["computation"]) // Exclude SO with computation Ex : Ticket -> Time to own exceeded
             ) {
                 $allowed_so[$subKey] = $subArray["name"];
             }
         }
-
+    
         return $allowed_so;
-    }
+    }    
 
 
     public function computeDisplayContainer($item, $container_id)
@@ -433,6 +458,19 @@ class PluginFieldsContainerDisplayCondition extends CommonDBChild
         $searchOption = Search::getOptions(get_class($item))[$this->fields['search_option']];
 
         $fields = array_merge($item->fields, $item->input);
+
+        // Utiliser category_itil directement si elle est spécifiée
+        if ($this->fields['search_option'] == '7' && array_key_exists('7', $searchOption)) {  // Assurez-vous que l'ID '7' correspond à category_itil
+            $categoryItilField = $searchOption[7]['field'];
+            switch ($condition) {
+                case self::SHOW_CONDITION_EQ:
+                    if ($fields[$categoryItilField] == $value) return false;
+                    break;
+                case self::SHOW_CONDITION_NE:
+                    if ($fields[$categoryItilField] != $value) return false;
+                    break;
+            }
+        }
 
         switch ($condition) {
             case self::SHOW_CONDITION_EQ:
@@ -480,7 +518,7 @@ class PluginFieldsContainerDisplayCondition extends CommonDBChild
                     return false;
                 }
                 break;
-        }
+    }
 
         return true;
     }
@@ -552,6 +590,18 @@ class PluginFieldsContainerDisplayCondition extends CommonDBChild
     public function showForm($ID, array $options = [])
     {
         $container_id = $options['plugin_fields_containers_id'];
+
+        // Récupérez les options de recherche, avec la logique conditionnelle déjà en place
+        $search_options = $this->isNewItem()
+            ? []
+            : self::removeBlackListedOption(Search::getOptions($this->fields['itemtype']), $this->fields['itemtype']);
+
+            if (array_key_exists('7', $search_options)) {  // Vérifier l'existence de 'category_itil'
+                $categoryItilOption = $search_options[7];  // Utiliser 'category_itil'
+                error_log('category_itil est défini dans les options de recherche');
+            } else {
+                error_log('category_itil n\'est PAS défini dans les options de recherche');
+            }
 
         $twig_params = [
             'container_display_condition' => $this,
