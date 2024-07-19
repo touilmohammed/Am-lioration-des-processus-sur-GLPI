@@ -71,6 +71,20 @@ if ($formAnswer->add($_POST) === false) {
    $_SESSION['glpi_use_mode'] = $backup_debug;
    die();
 }
+
+// Check if a ticket was created
+global $DB;
+$query = "SELECT `tickets_id` FROM `glpi_items_tickets` WHERE `itemtype` = 'PluginFormcreatorFormAnswer' AND `items_id` = " . $formAnswer->getID();
+$result = $DB->query($query);
+if ($row = $DB->fetchAssoc($result)) {
+     $ticketId = $row['tickets_id'];
+     echo json_encode([
+         'redirect' => "/glpi/front/ticket.form.php?id=" . $ticketId
+     ]);
+     $_SESSION['glpi_use_mode'] = $backup_debug;
+     die();
+}
+
 $form->increaseUsageCount();
 $_SESSION['glpi_use_mode'] = $backup_debug;
 
@@ -140,3 +154,6 @@ if (strpos($_SERVER['HTTP_REFERER'], 'formdisplay.php') !== false) {
    );
    die();
 }
+
+// Finally, restore the session mode before ending the script
+$_SESSION['glpi_use_mode'] = $backup_debug;
